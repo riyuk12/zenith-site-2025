@@ -451,8 +451,245 @@
 
         sections.forEach(sec => spyObserver.observe(sec));
     </script>
+ <!-- Particle Network (vanilla, themed, distance-based lines) -->
+    <script>
+      (function () {
+        const container = document.getElementById('particles-container');
+        if (!container) return;
 
-    <script> // Particle Network (vanilla) (() => { const container = document.getElementById('particles-container'); if (!container) return; // Create canvas const canvas = document.createElement('canvas'); canvas.id = 'network-canvas'; canvas.style.position = 'fixed'; canvas.style.top = '0'; canvas.style.left = '0'; canvas.style.width = '100%'; canvas.style.height = '100%'; canvas.style.zIndex = '0'; canvas.style.pointerEvents = 'none'; // don't block UI container.innerHTML = ''; container.appendChild(canvas); const ctx = canvas.getContext('2d'); // Theme color from CSS variable const getAccent = () => { const v = getComputedStyle(document.documentElement).getPropertyValue('--accent')?.trim(); return v || '#00ff9d'; }; const hexToRgb = (hex) => { const h = hex.replace('#', ''); const bigint = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16); return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 }; }; let accentHex = getAccent(); let accentRgb = hexToRgb(accentHex); const state = { particles: [], maxDist: 140, maxDist2: 140 * 140, running: true }; const prefersReduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches; // Density-based count const calcCount = () => { const w = canvas.clientWidth; const h = canvas.clientHeight; // roughly ~150 on a 1920x1080 display, clamped const target = Math.round((w * h) / 12000); return Math.max(70, Math.min(220, target)); }; const rand = (min, max) => Math.random() * (max - min) + min; function makeParticle(w, h) { return { x: Math.random() * w, y: Math.random() * h, // gentle float vx: rand(-0.25, 0.25), vy: rand(-0.25, 0.25), r: rand(0.8, 1.7) }; } function resize() { const dpr = window.devicePixelRatio || 1; const w = window.innerWidth; const h = window.innerHeight; canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // scale once // distance threshold scales slightly with viewport state.maxDist = Math.max(100, Math.min(190, Math.min(w, h) * 0.18)); state.maxDist2 = state.maxDist * state.maxDist; // adjust particle count const target = calcCount(); const cur = state.particles.length; if (target > cur) { for (let i = 0; i < target - cur; i++) state.particles.push(makeParticle(w, h)); } else if (target < cur) { state.particles.length = target; } } // Mouse highlight (subtle) const mouse = { x: null, y: null, active: false }; const setMouse = (e) => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.active = true; clearTimeout(setMouse._t); setMouse._t = setTimeout(() => (mouse.active = false), 1000); }; window.addEventListener('mousemove', setMouse, { passive: true }); function update(dt) { const w = canvas.clientWidth; const h = canvas.clientHeight; for (let i = 0; i < state.particles.length; i++) { const p = state.particles[i]; p.x += p.vx * dt; p.y += p.vy * dt; // wrap (seamless) if (p.x < -10) p.x = w + 10; if (p.x > w + 10) p.x = -10; if (p.y < -10) p.y = h + 10; if (p.y > h + 10) p.y = -10; } } function draw() { const w = canvas.clientWidth; const h = canvas.clientHeight; ctx.clearRect(0, 0, w, h); // points ctx.fillStyle = 'rgba(255,255,255,0.65)'; for (let i = 0; i < state.particles.length; i++) { const p = state.particles[i]; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); } // lines for (let i = 0; i < state.particles.length; i++) { const a = state.particles[i]; for (let j = i + 1; j < state.particles.length; j++) { const b = state.particles[j]; const dx = a.x - b.x; const dy = a.y - b.y; const d2 = dx * dx + dy * dy; if (d2 <= state.maxDist2) { const d = Math.sqrt(d2); const alpha = Math.max(0, 1 - d / state.maxDist) * 0.45; // fade by closeness ctx.strokeStyle = `rgba(${accentRgb.r},${accentRgb.g},${accentRgb.b},${alpha})`; ctx.lineWidth = Math.max(0.3, alpha); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); } } } // optional mouse highlight lines (subtle) if (mouse.active && mouse.x != null && mouse.y != null) { const mouseDist = Math.min(180, state.maxDist * 0.9); const mouseDist2 = mouseDist * mouseDist; for (let i = 0; i < state.particles.length; i++) { const p = state.particles[i]; const dx = p.x - mouse.x; const dy = p.y - mouse.y; const d2 = dx * dx + dy * dy; if (d2 <= mouseDist2) { const d = Math.sqrt(d2); const alpha = Math.max(0, 1 - d / mouseDist) * 0.55; ctx.strokeStyle = `rgba(${accentRgb.r},${accentRgb.g},${accentRgb.b},${alpha})`; ctx.lineWidth = Math.max(0.4, alpha * 1.1); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(mouse.x, mouse.y); ctx.stroke(); } } } } let last = performance.now(); let rafId = 0; function frame(now) { const dt = Math.min(33, now - last); // cap delta last = now; update(dt); draw(); rafId = requestAnimationFrame(frame); } // Init const init = () => { resize(); // build initial set const w = canvas.clientWidth, h = canvas.clientHeight; state.particles = Array.from({ length: calcCount() }, () => makeParticle(w, h)); if (prefersReduce) { // draw once only update(16); draw(); state.running = false; return; } rafId = requestAnimationFrame(frame); }; window.addEventListener('resize', () => { resize(); // update accent if CSS var changes (e.g., theme switch) const newAccent = getAccent(); if (newAccent !== accentHex) { accentHex = newAccent; accentRgb = hexToRgb(accentHex); } }, { passive: true }); // Kick off after DOM is ready to avoid layout thrash if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init, { once: true }); } else { init(); } // Optional: expose a quick refresh if needed elsewhere window.__refreshParticleTheme = () => { accentHex = getAccent(); accentRgb = hexToRgb(accentHex); }; })(); </script>
+        // Create canvas
+        const canvas = document.createElement('canvas');
+        canvas.id = 'network-canvas';
+        Object.assign(canvas.style, {
+          position: 'fixed',
+          top: '0',
+          left: '0',
+          width: '100%',
+          height: '100%',
+          zIndex: '0',
+          pointerEvents: 'none',
+        });
+        container.innerHTML = '';
+        container.appendChild(canvas);
 
+        const ctx = canvas.getContext('2d');
+
+        // Theme color from CSS variable
+        const getAccent = () => {
+          const v = getComputedStyle(
+            document.documentElement
+          ).getPropertyValue('--accent')?.trim();
+          return v || '#00ff9d';
+        };
+        const hexToRgb = (hex) => {
+          const h = hex.replace('#', '');
+          const val = parseInt(
+            h.length === 3 ? h.split('').map((c) => c + c).join('') : h,
+            16
+          );
+          return { r: (val >> 16) & 255, g: (val >> 8) & 255, b: val & 255 };
+        };
+
+        let accentHex = getAccent();
+        let accentRgb = hexToRgb(accentHex);
+
+        const state = {
+          particles: [],
+          maxDist: 140,
+          maxDist2: 140 * 140,
+        };
+
+        const prefersReduce =
+          window.matchMedia &&
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        // Density-based count
+        const calcCount = () => {
+          const w = canvas.clientWidth;
+          const h = canvas.clientHeight;
+          // roughly ~150 on a 1920x1080 display, clamped
+          const target = Math.round((w * h) / 12000);
+          return Math.max(70, Math.min(220, target));
+        };
+
+        const rand = (min, max) => Math.random() * (max - min) + min;
+
+        function makeParticle(w, h) {
+          return {
+            x: Math.random() * w,
+            y: Math.random() * h,
+            // gentle float
+            vx: rand(-0.25, 0.25),
+            vy: rand(-0.25, 0.25),
+            r: rand(0.8, 1.7),
+          };
+        }
+
+        function resize() {
+          const dpr = window.devicePixelRatio || 1;
+          const w = window.innerWidth;
+          const h = window.innerHeight;
+          canvas.width = Math.round(w * dpr);
+          canvas.height = Math.round(h * dpr);
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+          // distance threshold scales slightly with viewport
+          state.maxDist = Math.max(100, Math.min(190, Math.min(w, h) * 0.18));
+          state.maxDist2 = state.maxDist * state.maxDist;
+
+          // adjust particle count
+          const target = calcCount();
+          const cur = state.particles.length;
+          if (target > cur) {
+            for (let i = 0; i < target - cur; i++)
+              state.particles.push(makeParticle(w, h));
+          } else if (target < cur) {
+            state.particles.length = target;
+          }
+        }
+
+        // Mouse highlight (subtle)
+        const mouse = { x: null, y: null, active: false };
+        const setMouse = (e) => {
+          mouse.x = e.clientX;
+          mouse.y = e.clientY;
+          mouse.active = true;
+          clearTimeout(setMouse._t);
+          setMouse._t = setTimeout(() => (mouse.active = false), 1000);
+        };
+        window.addEventListener('mousemove', setMouse, { passive: true });
+
+        function update(dt) {
+          const w = canvas.clientWidth;
+          const h = canvas.clientHeight;
+
+          for (let i = 0; i < state.particles.length; i++) {
+            const p = state.particles[i];
+            p.x += p.vx * dt * 0.06;
+            p.y += p.vy * dt * 0.06;
+
+            // wrap (seamless)
+            if (p.x < -10) p.x = w + 10;
+            if (p.x > w + 10) p.x = -10;
+            if (p.y < -10) p.y = h + 10;
+            if (p.y > h + 10) p.y = -10;
+          }
+        }
+
+        function draw() {
+          const w = canvas.clientWidth;
+          const h = canvas.clientHeight;
+          ctx.clearRect(0, 0, w, h);
+
+          // points
+          ctx.fillStyle = 'rgba(255,255,255,0.65)';
+          for (let i = 0; i < state.particles.length; i++) {
+            const p = state.particles[i];
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          // lines between close points
+          for (let i = 0; i < state.particles.length; i++) {
+            const a = state.particles[i];
+            for (let j = i + 1; j < state.particles.length; j++) {
+              const b = state.particles[j];
+              const dx = a.x - b.x;
+              const dy = a.y - b.y;
+              const d2 = dx * dx + dy * dy;
+              if (d2 <= state.maxDist2) {
+                const d = Math.sqrt(d2);
+                const alpha = Math.max(0, 1 - d / state.maxDist) * 0.45;
+                ctx.strokeStyle = `rgba(${accentRgb.r},${accentRgb.g},${accentRgb.b},${alpha})`;
+                ctx.lineWidth = Math.max(0.3, alpha);
+                ctx.beginPath();
+                ctx.moveTo(a.x, a.y);
+                ctx.lineTo(b.x, b.y);
+                ctx.stroke();
+              }
+            }
+          }
+
+          // optional mouse highlight lines (subtle)
+          if (mouse.active && mouse.x != null && mouse.y != null) {
+            const mouseDist = Math.min(180, state.maxDist * 0.9);
+            const mouseDist2 = mouseDist * mouseDist;
+            for (let i = 0; i < state.particles.length; i++) {
+              const p = state.particles[i];
+              const dx = p.x - mouse.x;
+              const dy = p.y - mouse.y;
+              const d2 = dx * dx + dy * dy;
+              if (d2 <= mouseDist2) {
+                const d = Math.sqrt(d2);
+                const alpha = Math.max(0, 1 - d / mouseDist) * 0.55;
+                ctx.strokeStyle = `rgba(${accentRgb.r},${accentRgb.g},${accentRgb.b},${alpha})`;
+                ctx.lineWidth = Math.max(0.4, alpha * 1.1);
+                ctx.beginPath();
+                ctx.moveTo(p.x, p.y);
+                ctx.lineTo(mouse.x, mouse.y);
+                ctx.stroke();
+              }
+            }
+          }
+        }
+
+        let last = performance.now();
+        let rafId = 0;
+
+        function frame(now) {
+          const dt = Math.min(33, now - last); // cap delta
+          last = now;
+          update(dt);
+          draw();
+          rafId = requestAnimationFrame(frame);
+        }
+
+        // Init
+        const init = () => {
+          resize();
+          const w = canvas.clientWidth,
+            h = canvas.clientHeight;
+          state.particles = Array.from({ length: calcCount() }, () =>
+            makeParticle(w, h)
+          );
+
+          if (prefersReduce) {
+            // draw once only
+            update(16);
+            draw();
+            return;
+          }
+
+          rafId = requestAnimationFrame(frame);
+        };
+
+        window.addEventListener(
+          'resize',
+          () => {
+            resize();
+            // update accent if CSS var changes
+            const newAccent = getAccent();
+            if (newAccent !== accentHex) {
+              accentHex = newAccent;
+              accentRgb = hexToRgb(accentHex);
+            }
+          },
+          { passive: true }
+        );
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', init, { once: true });
+        } else {
+          init();
+        }
+
+        // Optional: expose a quick refresh if needed elsewhere
+        window.__refreshParticleTheme = () => {
+          accentHex = getAccent();
+          accentRgb = hexToRgb(accentHex);
+        };
+      })();
+    </script>
 
 </body></html>
